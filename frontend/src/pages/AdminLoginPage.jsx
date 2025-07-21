@@ -39,7 +39,7 @@ function AdminLoginPage() {
       if (data.user && data.session) {
         setMessage('Login berhasil! Mengarahkan ke Dashboard Admin...');
         setIsSuccess(true);
-        setTimeout(() => navigate('/adminDashboard'), 2000);
+        setTimeout(() => navigate('/admin-dashboard'), 2000);
       } else {
         throw new Error('Login gagal. Periksa kembali email dan password Anda.');
       }

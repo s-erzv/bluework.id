@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { useLocation, useNavigate } from 'react-router-dom'; // Import useLocation and useNavigate
+import { useLocation, useNavigate } from 'react-router-dom';
+// import { useTheme } from '../contexts/ThemeContext'; // Assuming useTheme is not directly used in this component's rendering logic
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Inisialisasi client Supabase khusus untuk unggahan publik/anonim.
+// Ini penting untuk memastikan bahwa unggahan dari formulir ini TIDAK menggunakan
+// sesi pengguna yang terautentikasi (misalnya, jika admin sedang login di tab lain).
+const publicSupabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      persistSession: false,     // Jangan menyimpan sesi pengguna di sini
+      autoRefreshToken: false,   // Jangan mencoba me-refresh token
+      detectSessionInUrl: false  // Jangan deteksi sesi dari URL
+    }
+  }
+);
 
 function ApplicationFormPage() {
   const location = useLocation();
@@ -66,7 +78,9 @@ function ApplicationFormPage() {
     setMessage('');
     setIsSuccess(false);
 
-    if (!supabaseUrl || !supabaseAnonKey) {
+    // Menggunakan publicSupabase di sini
+    // Periksa apakah URL dan kunci Supabase tersedia di instance publicSupabase
+    if (!publicSupabase.supabaseUrl || !publicSupabase.supabaseKey) {
       setMessage('Error: Konfigurasi Supabase belum lengkap. Tidak dapat mengirim aplikasi.');
       setLoading(false);
       return;
@@ -85,7 +99,8 @@ function ApplicationFormPage() {
 
       if (formData.photoFile) {
         const photoFileName = `${Date.now()}-${formData.photoFile.name}`;
-        const { data: photoUploadData, error: photoUploadError } = await supabase.storage
+        // Menggunakan publicSupabase untuk unggah foto
+        const { data: photoUploadData, error: photoUploadError } = await publicSupabase.storage
           .from('applicant-documents')
           .upload(`photos/${photoFileName}`, formData.photoFile, {
             cacheControl: '3600',
@@ -93,12 +108,14 @@ function ApplicationFormPage() {
           });
 
         if (photoUploadError) throw photoUploadError;
-        photoUrl = supabase.storage.from('applicant-documents').getPublicUrl(`photos/${photoFileName}`).data.publicUrl;
+        // Menggunakan publicSupabase untuk mendapatkan URL publik
+        photoUrl = publicSupabase.storage.from('applicant-documents').getPublicUrl(`photos/${photoFileName}`).data.publicUrl;
       }
 
       if (formData.cvFile) {
         const cvFileName = `${Date.now()}-${formData.cvFile.name}`;
-        const { data: cvUploadData, error: cvUploadError } = await supabase.storage
+        // Menggunakan publicSupabase untuk unggah CV
+        const { data: cvUploadData, error: cvUploadError } = await publicSupabase.storage
           .from('applicant-documents')
           .upload(`cvs/${cvFileName}`, formData.cvFile, {
             cacheControl: '3600',
@@ -106,10 +123,13 @@ function ApplicationFormPage() {
           });
 
         if (cvUploadError) throw cvUploadError;
-        cvUrl = supabase.storage.from('applicant-documents').getPublicUrl(`cvs/${cvFileName}`).data.publicUrl;
+        // Menggunakan publicSupabase untuk mendapatkan URL publik
+        cvUrl = publicSupabase.storage.from('applicant-documents').getPublicUrl(`cvs/${cvFileName}`).data.publicUrl;
       }
 
-      const { data, error } = await supabase.from('applications').insert([
+      // Kirim data aplikasi ke database
+      // Menggunakan publicSupabase untuk insert data
+      const { data, error } = await publicSupabase.from('applications').insert([
         {
           full_name: formData.fullName,
           nick_name: formData.nickName,
@@ -136,16 +156,24 @@ function ApplicationFormPage() {
 
       setMessage('Aplikasi berhasil dikirim! Anda akan segera diarahkan kembali ke halaman utama.');
       setIsSuccess(true);
+      // Reset form data
       setFormData({
         fullName: '', nickName: '', address: '', dob: '', age: '', phoneNumber: '', email: '',
-        ktpNumber: '', lastEducation: '', appliedPosition: '', lastWorkExperience: '',
-        lastSalary: '', expectedSalary: '', domicileCity: '', readyToRelocate: false,
+        ktpNumber: '', lastEducation: '', appliedPosition: initialAppliedPosition, // Keep initial applied position
+        lastWorkExperience: '', lastSalary: '', expectedSalary: '', domicileCity: '', readyToRelocate: false,
         photoFile: null, cvFile: null,
       });
 
-      setTimeout(() => navigate('/'), 3000);
+      // Clear file inputs manually as setting state to null doesn't clear the input value
+      const photoInput = document.getElementById('photoFile');
+      if (photoInput) photoInput.value = '';
+      const cvInput = document.getElementById('cvFile');
+      if (cvInput) cvInput.value = '';
+
+      setTimeout(() => navigate('/'), 3000); // Redirect after 3 seconds
 
     } catch (error) {
+      console.error('Error submitting application:', error);
       setMessage(`Gagal mengirim aplikasi: ${error.message}`);
       setIsSuccess(false);
     } finally {

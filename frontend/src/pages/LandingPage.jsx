@@ -95,7 +95,7 @@ function LandingPage() {
       <section
         ref={heroRef}
         className={`relative flex flex-col items-center justify-center py-24 px-4 sm:px-6 lg:px-8 overflow-hidden
-                    ${theme === 'dark' ? 'bg-dark-bg-primary text-dark-text-primary' : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white'} rounded-b-[4rem] md:rounded-b-[6rem]
+                    ${theme === 'dark' ? 'bg-dark-bg-primary text-dark-text-primary' : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white'}
                     transition-all duration-700 ease-out
                     ${heroEntry?.isIntersecting ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10'}`}
       >
@@ -201,8 +201,8 @@ function LandingPage() {
           <p>&copy; {new Date().getFullYear()} BlueWork.ID. All rights reserved.</p>
           <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-6 mt-4 md:mt-0">
             <Link to="/admin" className={`hover:text-blue-primary dark:hover:text-blue-accent transition-colors duration-200 text-base font-medium`}>Login Admin</Link>
-            <Link to="/privacy-policy" className={`hover:text-blue-primary dark:hover:text-blue-accent transition-colors duration-200 text-base font-medium`}>Privacy Policy</Link>
-            <Link to="/terms-of-service" className={`hover:text-blue-primary dark:hover:text-blue-accent transition-colors duration-200 text-base font-medium`}>Terms of Service</Link>
+            {/* <Link to="/privacy-policy" className={`hover:text-blue-primary dark:hover:text-blue-accent transition-colors duration-200 text-base font-medium`}>Privacy Policy</Link>
+            <Link to="/terms-of-service" className={`hover:text-blue-primary dark:hover:text-blue-accent transition-colors duration-200 text-base font-medium`}>Terms of Service</Link> */}
           </div>
         </div>
       </footer>

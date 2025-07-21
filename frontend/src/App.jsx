@@ -8,6 +8,9 @@ import ApplicationFormPage from './pages/ApplicationFormPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import { createClient } from '@supabase/supabase-js';
+import AddJobPage from './pages/AddJobPage';
+//import ViewApplicantsPage from './pages/ViewApplicantsPage';
+
 
 // Supabase client initialization (for auth state monitoring)
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -63,6 +66,8 @@ function App() {
           <Route path="/application-form" element={<ApplicationFormPage initialAppliedPosition={initialAppliedPosition} />} />
           <Route path="/admin" element={<AdminLoginPage onLoginSuccess={handleLoginSuccess} />} />
           <Route path="/admin-dashboard" element={<AdminDashboardPage currentUser={currentUser} onLogout={handleLogout} />} />
+          <Route path="/admin/add-job" element={<AddJobPage currentUser={currentUser} />} />
+          
         </Routes>
       </main>
     </>
