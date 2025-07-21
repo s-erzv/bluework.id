@@ -1,0 +1,48 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Import Poppins font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
+body {
+  font-family: 'Poppins', sans-serif;
+  @apply text-light-text-primary dark:text-dark-text-primary; /* Default text color based on theme */
+  @apply bg-light-bg-primary dark:bg-dark-bg-primary; /* Default background based on theme */
+  transition: background-color 0.3s ease, color 0.3s ease; /* Smooth transition for theme change */
+}
+
+/* Basic fade-in animation for tab content */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+/* Custom scrollbar for better aesthetics */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-light-bg-secondary dark:bg-dark-bg-secondary;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-blue-accent;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-blue-primary;
+}
