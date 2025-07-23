@@ -181,11 +181,9 @@ function ApplicationFormPage() {
         cvUrl = publicSupabase.storage.from('applicant-documents').getPublicUrl(`cvs/${cvFileName}`).data.publicUrl;
       }
 
-      // Prepare work experience data for storage
-      // Convert the workExperience array to a JSON string
-      const workExperienceJson = JSON.stringify(formData.workExperience);
-
-      const { data, error } = await publicSupabase.from('applications').insert([
+      // --- START: Perubahan untuk menyimpan data ke tabel 'applications'
+      // Hanya sertakan kolom-kolom yang ada di skema tabel 'applications' Anda saat ini
+      const { data: insertedApplication, error: applicationInsertError } = await publicSupabase.from('applications').insert([
         {
           full_name: formData.fullName,
           nick_name: formData.nickName,
@@ -197,7 +195,6 @@ function ApplicationFormPage() {
           ktp_number: formData.ktpNumber,
           last_education: formData.lastEducation,
           applied_position: formData.appliedPosition,
-          last_work_experience: workExperienceJson, // Store as JSON string
           last_salary: formData.lastSalary ? parseFloat(formData.lastSalary) : null,
           expected_salary: parseFloat(formData.expectedSalary),
           domicile_city: formData.domicileCity,
@@ -205,10 +202,47 @@ function ApplicationFormPage() {
           photo_url: photoUrl,
           cv_url: cvUrl,
           applied_at: new Date().toISOString(),
+          // Kolom-kolom pengalaman kerja yang terstruktur (last_job_position, dll.)
+          // dan last_work_experience TIDAK LAGI DISERTAKAN di sini
+          // karena mereka tidak ada di skema 'applications' terbaru Anda
+          // atau datanya disimpan di tabel terpisah.
         },
-      ]);
+      ]).select('id').single(); // Penting: select('id').single() untuk mendapatkan ID aplikasi yang baru dibuat
 
-      if (error) throw error;
+      if (applicationInsertError) {
+        console.error('Error inserting application main data:', applicationInsertError);
+        throw applicationInsertError;
+      }
+
+      const newApplicationId = insertedApplication.id;
+
+      // --- START: Simpan setiap pengalaman kerja ke tabel 'applicant_work_experiences'
+      // Filter pengalaman kerja yang kosong sebelum insert
+      const validWorkExperiences = formData.workExperience.filter(exp => 
+        exp.position && exp.companyName && exp.startDate
+      );
+
+      if (validWorkExperiences.length > 0) {
+        const workExperiencesToInsert = validWorkExperiences.map(exp => ({
+          application_id: newApplicationId,
+          position: exp.position,
+          company_name: exp.companyName,
+          start_date: exp.startDate ? `${exp.startDate}-01` : null, // Convert YYYY-MM to YYYY-MM-DD
+          end_date: exp.endDate ? `${exp.endDate}-01` : null,     // Convert YYYY-MM to YYYY-MM-DD
+          is_current_job: exp.isCurrent,
+        }));
+
+        const { error: workExpInsertError } = await publicSupabase.from('applicant_work_experiences').insert(workExperiencesToInsert);
+
+        if (workExpInsertError) {
+          console.error('Error inserting work experiences:', workExpInsertError);
+          // Jika terjadi error di sini, Anda bisa memilih untuk menghapus aplikasi utama juga
+          // agar tidak ada data yang tidak konsisten. Contoh:
+          await publicSupabase.from('applications').delete().eq('id', newApplicationId); // Rollback main application
+          throw workExpInsertError; // Melempar error agar seluruh proses gagal
+        }
+      }
+      // --- END: Simpan setiap pengalaman kerja ke tabel 'applicant_work_experiences'
 
       setMessage('Lamaran Anda berhasil dikirim! Anda akan segera diarahkan kembali ke halaman utama.');
       setIsSuccess(true);
@@ -389,7 +423,7 @@ function ApplicationFormPage() {
 
           {/* Bagian Pengalaman Kerja */}
           <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Pengalaman Kerja Terakhir</h3>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Pengalaman Kerja</h3>
             {formData.workExperience.map((exp, index) => (
               <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                 {/* Header for collapsed view */}

@@ -15,7 +15,27 @@ function AdminDashboardPage({ currentUser, onLogout }) {
   const [selectedJob, setSelectedJob] = useState(''); // State for job filter
   const [availableJobs, setAvailableJobs] = useState([]); // State for unique job positions from job_listings
   const [isDropdownOpen, setIsDropdownOpen] = useState(false); // State for download dropdown
+  const [downloading, setDownloading] = useState(false); // New state for download loading
   const navigate = useNavigate();
+
+  // Helper function to format work experience for display and export
+  const formatWorkExperiences = (experiences) => {
+    if (!experiences || experiences.length === 0) return '-';
+    // Sort experiences by start_date descending (most recent first)
+    const sortedExperiences = [...experiences].sort((a, b) => {
+      // Prioritize current jobs
+      if (a.is_current_job && !b.is_current_job) return -1;
+      if (!a.is_current_job && b.is_current_job) return 1;
+      // Then sort by start date
+      return new Date(b.start_date) - new Date(a.start_date);
+    });
+
+    return sortedExperiences.map(exp => {
+      const startDate = exp.start_date ? new Date(exp.start_date).toLocaleDateString('id-ID', { year: 'numeric', month: 'short' }) : '';
+      const endDate = exp.is_current_job ? 'Saat Ini' : (exp.end_date ? new Date(exp.end_date).toLocaleDateString('id-ID', { year: 'numeric', month: 'short' }) : '');
+      return `${exp.position} di ${exp.company_name} (${startDate} - ${endDate})`;
+    }).join('\n'); // Join with newline for display in table cell and PDF
+  };
 
   // Effect to check authentication and fetch data
   useEffect(() => {
@@ -43,17 +63,27 @@ function AdminDashboardPage({ currentUser, onLogout }) {
     try {
       setLoading(true);
       // Fetch data from the 'applications' table
-      const { data, error } = await supabase
+      // AND also fetch related 'applicant_work_experiences' using a join (or separate query)
+      const { data: applicationsData, error: applicationsError } = await supabase
         .from('applications')
-        .select('*')
-        .order('applied_at', { ascending: false }); // Order by application date, newest first
+        .select(`
+          *,
+          applicant_work_experiences (
+            position,
+            company_name,
+            start_date,
+            end_date,
+            is_current_job
+          )
+        `)
+        .order('applied_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching applicants:', error.message);
-        throw error;
+      if (applicationsError) {
+        console.error('Error fetching applicants for display:', applicationsError.message);
+        throw applicationsError;
       }
 
-      setApplicants(data);
+      setApplicants(applicationsData);
 
     } catch (err) {
       setError(`Gagal memuat daftar pelamar: ${err.message}`);
@@ -62,25 +92,54 @@ function AdminDashboardPage({ currentUser, onLogout }) {
     }
   };
 
-  // New function to fetch job positions from 'job_listings' table
+  // New function to fetch ALL job positions from 'job_listings' table
   const fetchJobPositions = async () => {
     try {
       const { data, error } = await supabase
-        .from('job_listings') // Assuming your job listings table is named 'job_listings'
-        .select('title'); // Select 'title' instead of 'position_name' as per schema
+        .from('job_listings')
+        .select('title');
 
       if (error) {
         console.error('Error fetching job positions:', error.message);
         throw error;
       }
 
-      // Extract unique position names and add an empty option
-      const uniqueJobNames = [...new Set(data.map(job => job.title))]; // Use job.title
-      setAvailableJobs(['', ...uniqueJobNames]); // Add an empty option for "All Positions"
+      const uniqueJobNames = [...new Set(data.map(job => job.title))];
+      setAvailableJobs(['', ...uniqueJobNames]);
 
     } catch (err) {
       console.error('Failed to load job positions for filter:', err.message);
-      // Optionally set an error state specific to job positions if needed
+    }
+  };
+
+  // New function to fetch ALL applicants with their work experiences for download
+  const fetchAllApplicantsForDownload = async () => {
+    setDownloading(true);
+    try {
+      const { data, error } = await supabase
+        .from('applications')
+        .select(`
+          *,
+          applicant_work_experiences (
+            position,
+            company_name,
+            start_date,
+            end_date,
+            is_current_job
+          )
+        `)
+        .order('applied_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching all applicants for download:', error.message);
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      setError(`Gagal memuat semua data pelamar untuk unduhan: ${err.message}`);
+      return null;
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -89,7 +148,7 @@ function AdminDashboardPage({ currentUser, onLogout }) {
       setLoading(true);
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      onLogout(); // Call the onLogout prop from App.jsx to clear user state
+      onLogout();
     } catch (err) {
       console.error('Logout error:', err.message);
       setError(`Gagal logout: ${err.message}`);
@@ -102,14 +161,12 @@ function AdminDashboardPage({ currentUser, onLogout }) {
   const filteredApplicants = useMemo(() => {
     let currentApplicants = applicants;
 
-    // Apply job filter first
     if (selectedJob) {
       currentApplicants = currentApplicants.filter(
         applicant => applicant.applied_position === selectedJob
       );
     }
 
-    // Apply search query filter
     if (searchQuery) {
       const lowerCaseQuery = searchQuery.toLowerCase();
       currentApplicants = currentApplicants.filter(
@@ -117,7 +174,12 @@ function AdminDashboardPage({ currentUser, onLogout }) {
           applicant.full_name.toLowerCase().includes(lowerCaseQuery) ||
           applicant.email.toLowerCase().includes(lowerCaseQuery) ||
           applicant.domicile_city.toLowerCase().includes(lowerCaseQuery) ||
-          applicant.phone_number.toLowerCase().includes(lowerCaseQuery)
+          applicant.phone_number.toLowerCase().includes(lowerCaseQuery) ||
+          // Also search within work experiences
+          (applicant.applicant_work_experiences && applicant.applicant_work_experiences.some(exp => 
+            exp.position.toLowerCase().includes(lowerCaseQuery) ||
+            exp.company_name.toLowerCase().includes(lowerCaseQuery)
+          ))
       );
     }
 
@@ -125,33 +187,37 @@ function AdminDashboardPage({ currentUser, onLogout }) {
   }, [applicants, searchQuery, selectedJob]);
 
   // Function to handle PDF download
-  const handleDownloadPdf = () => {
-    console.log('Attempting PDF download...');
-    console.log('window.jspdf:', typeof window.jspdf); // Check for window.jspdf (lowercase)
-
-    // Corrected access: jsPDF constructor is typically within window.jspdf
-    // And autoTable is a method on the jsPDF instance, not a global plugin property.
+  const handleDownloadPdf = async () => {
     if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
       setError('PDF export libraries not loaded. Please check index.html.');
       return;
     }
 
-    const doc = new window.jspdf.jsPDF(); // Correctly instantiate jsPDF
-    // Added 'Siap Relokasi' to tableColumn
-    const tableColumn = ["Nama Lengkap", "Posisi Dilamar", "Email", "No HP", "Kota Domisili", "Siap Relokasi", "Diunggah Pada"];
+    const allApplicants = await fetchAllApplicantsForDownload();
+    if (!allApplicants) return;
+
+    const doc = new window.jspdf.jsPDF('landscape'); // Use landscape for more columns
+    const tableColumn = [
+      "Nama Lengkap", "Posisi Dilamar", "Email", "No HP", "Kota Domisili", "Siap Relokasi",
+      "Pengalaman Kerja", // Single column for all experiences
+      "Diunggah Pada", "URL Foto", "URL CV"
+    ];
     const tableRows = [];
 
-    filteredApplicants.forEach(applicant => {
+    allApplicants.forEach(applicant => {
       const applicantData = [
         applicant.full_name,
         applicant.applied_position,
         applicant.email,
         applicant.phone_number,
         applicant.domicile_city,
-        applicant.ready_to_relocate ? 'Ya' : 'Tidak', // Format boolean to 'Ya'/'Tidak'
+        applicant.ready_to_relocate ? 'Ya' : 'Tidak',
+        formatWorkExperiences(applicant.applicant_work_experiences), // Use formatted experiences
         new Date(applicant.applied_at).toLocaleDateString('id-ID', {
           year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-        })
+        }),
+        applicant.photo_url || '-',
+        applicant.cv_url || '-',
       ];
       tableRows.push(applicantData);
     });
@@ -160,42 +226,49 @@ function AdminDashboardPage({ currentUser, onLogout }) {
       head: [tableColumn],
       body: tableRows,
       startY: 20,
-      styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
+      styles: { fontSize: 7, cellPadding: 1, overflow: 'linebreak' }, // Reduced font size and padding
       headStyles: { fillColor: [41, 128, 185], textColor: 255 },
-      margin: { top: 10, left: 10, right: 10, bottom: 10 },
+      margin: { top: 10, left: 5, right: 5, bottom: 10 }, // Adjusted margins
+      columnStyles: {
+        // Adjust width for the 'Pengalaman Kerja' column (index 6)
+        6: { cellWidth: 60 }, // Example fixed width, adjust as needed
+      }
     });
 
-    doc.save('daftar_pelamar.pdf');
-    setIsDropdownOpen(false); // Close dropdown after action
+    doc.save('daftar_pelamar_lengkap.pdf');
+    setIsDropdownOpen(false);
   };
 
   // Function to handle XLSX download
-  const handleDownloadXlsx = () => {
-    // Ensure xlsx library is loaded
+  const handleDownloadXlsx = async () => {
     if (typeof window.XLSX === 'undefined') {
       setError('XLSX export library not loaded. Please check index.html.');
       return;
     }
 
-    const dataToExport = filteredApplicants.map(applicant => ({
+    const allApplicants = await fetchAllApplicantsForDownload();
+    if (!allApplicants) return;
+
+    const dataToExport = allApplicants.map(applicant => ({
       'Nama Lengkap': applicant.full_name,
       'Posisi Dilamar': applicant.applied_position,
       'Email': applicant.email,
       'No HP': applicant.phone_number,
       'Kota Domisili': applicant.domicile_city,
-      'Siap Relokasi': applicant.ready_to_relocate ? 'Ya' : 'Tidak', // Format boolean to 'Ya'/'Tidak'
+      'Siap Relokasi': applicant.ready_to_relocate ? 'Ya' : 'Tidak',
+      'Pengalaman Kerja': formatWorkExperiences(applicant.applicant_work_experiences), // Use formatted experiences
       'Diunggah Pada': new Date(applicant.applied_at).toLocaleDateString('id-ID', {
         year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
       }),
-      'URL Foto': applicant.photo_url,
-      'URL CV': applicant.cv_url,
+      'URL Foto': applicant.photo_url || '-',
+      'URL CV': applicant.cv_url || '-',
     }));
 
     const ws = window.XLSX.utils.json_to_sheet(dataToExport);
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, "Pelamar");
-    window.XLSX.writeFile(wb, "daftar_pelamar.xlsx");
-    setIsDropdownOpen(false); // Close dropdown after action
+    window.XLSX.writeFile(wb, "daftar_pelamar_lengkap.xlsx");
+    setIsDropdownOpen(false);
   };
 
   return (
@@ -207,7 +280,7 @@ function AdminDashboardPage({ currentUser, onLogout }) {
           </h2>
           <button
             onClick={handleLogout}
-            disabled={loading}
+            disabled={loading || downloading}
             className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Logging Out...' : 'Logout'}
@@ -247,11 +320,11 @@ function AdminDashboardPage({ currentUser, onLogout }) {
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               className="inline-flex justify-center w-full rounded-lg border border-transparent shadow-sm px-4 py-2 bg-blue-500 text-base font-bold text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={filteredApplicants.length === 0 || loading}
+              disabled={downloading || loading}
               aria-haspopup="true"
               aria-expanded={isDropdownOpen ? "true" : "false"}
             >
-              Unduh Sebagai
+              {downloading ? 'Menyiapkan Unduhan...' : 'Unduh Sebagai'}
               <svg className="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
               </svg>
@@ -269,6 +342,7 @@ function AdminDashboardPage({ currentUser, onLogout }) {
                     onClick={handleDownloadPdf}
                     className="text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                     role="menuitem"
+                    disabled={downloading}
                   >
                     PDF
                   </button>
@@ -276,6 +350,7 @@ function AdminDashboardPage({ currentUser, onLogout }) {
                     onClick={handleDownloadXlsx}
                     className="text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                     role="menuitem"
+                    disabled={downloading}
                   >
                     XLSX
                   </button>
@@ -301,7 +376,8 @@ function AdminDashboardPage({ currentUser, onLogout }) {
                   <th className="py-3 px-4 text-left text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">Email</th>
                   <th className="py-3 px-4 text-left text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">No HP</th>
                   <th className="py-3 px-4 text-left text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">Kota Domisili</th>
-                  <th className="py-3 px-4 text-left text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">Siap Relokasi</th> {/* New column header */}
+                  <th className="py-3 px-4 text-left text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">Siap Relokasi</th>
+                  <th className="py-3 px-4 text-left text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">Pengalaman Kerja</th> {/* Changed to generic 'Pengalaman Kerja' */}
                   <th className="py-3 px-4 text-left text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider rounded-tr-lg">Diunggah Pada</th>
                   <th className="py-3 px-4 text-left text-sm font-semibold text-light-text-secondary dark:text-dark-text-secondary uppercase tracking-wider">Dokumen</th>
                 </tr>
@@ -315,7 +391,25 @@ function AdminDashboardPage({ currentUser, onLogout }) {
                     <td className="py-3 px-4 whitespace-nowrap text-light-text-primary dark:text-dark-text-primary">{applicant.phone_number}</td>
                     <td className="py-3 px-4 whitespace-nowrap text-light-text-primary dark:text-dark-text-primary">{applicant.domicile_city}</td>
                     <td className="py-3 px-4 whitespace-nowrap text-light-text-primary dark:text-dark-text-primary">
-                      {applicant.ready_to_relocate ? 'Ya' : 'Tidak'} {/* Display 'Ya' or 'Tidak' */}
+                      {applicant.ready_to_relocate ? 'Ya' : 'Tidak'}
+                    </td>
+                    {/* Displaying ALL work experiences in one cell */}
+                    <td className="py-3 px-4 text-light-text-primary dark:text-dark-text-primary text-sm">
+                      {applicant.applicant_work_experiences && applicant.applicant_work_experiences.length > 0 ? (
+                        <div className="space-y-1">
+                          {applicant.applicant_work_experiences.map((exp, expIndex) => (
+                            <div key={expIndex}>
+                              <p className="font-medium">{exp.position} di {exp.company_name}</p>
+                              <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                                {exp.start_date ? new Date(exp.start_date).toLocaleDateString('id-ID', { year: 'numeric', month: 'short' }) : ''} -
+                                {exp.is_current_job ? ' Saat Ini' : (exp.end_date ? new Date(exp.end_date).toLocaleDateString('id-ID', { year: 'numeric', month: 'short' }) : '')}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        '-'
+                      )}
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap text-light-text-secondary dark:text-dark-text-secondary text-sm">
                       {new Date(applicant.applied_at).toLocaleDateString('id-ID', {
