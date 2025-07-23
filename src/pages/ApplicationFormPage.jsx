@@ -466,7 +466,7 @@ function ApplicationFormPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-200 dark:border-gray-700">
             <div>
-              <label htmlFor="photoFile" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Unggah Foto (maks. 500KB, JPG/PNG)</label>
+              <label htmlFor="photoFile" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Unggah Foto (maks. 200KB, JPG/PNG)</label>
               <input
                 type="file"
                 id="photoFile"
