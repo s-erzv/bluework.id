@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { PlusCircleIcon, MinusCircleIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline'; // Import icons
 
 // Inisialisasi client Supabase khusus untuk unggahan publik/anonim.
 const publicSupabase = createClient(
@@ -20,6 +21,14 @@ function ApplicationFormPage() {
   const navigate = useNavigate();
   const initialAppliedPosition = location.state?.initialAppliedPosition || '';
 
+  const initialWorkExperienceEntry = {
+    position: '',
+    companyName: '',
+    startDate: '', // Format: YYYY-MM
+    endDate: '',   // Format: YYYY-MM
+    isCurrent: false,
+  };
+
   const [formData, setFormData] = useState({
     fullName: '',
     nickName: '',
@@ -31,16 +40,7 @@ function ApplicationFormPage() {
     ktpNumber: '',
     lastEducation: '',
     appliedPosition: initialAppliedPosition,
-    // Mengubah lastWorkExperience menjadi array untuk menampung multiple experiences
-    // Untuk saat ini, kita hanya fokus pada 'pengalaman terakhir' seperti permintaan
-    // Jika Anda ingin mendukung banyak pengalaman, struktur ini perlu diperluas
-    workExperience: [{
-      position: '',
-      companyName: '',
-      startDate: '', // Format: YYYY-MM
-      endDate: '',   // Format: YYYY-MM
-      isCurrent: false,
-    }],
+    workExperience: [{ ...initialWorkExperienceEntry }], // Start with one empty experience
     lastSalary: '',
     expectedSalary: '',
     domicileCity: '',
@@ -51,6 +51,9 @@ function ApplicationFormPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  // State untuk mengelola indeks pengalaman kerja yang saat ini diperluas
+  // Default: pengalaman pertama/satu-satunya akan diperluas
+  const [expandedExperienceIndex, setExpandedExperienceIndex] = useState(0); 
 
   useEffect(() => {
     setFormData(prev => ({ ...prev, appliedPosition: initialAppliedPosition }));
@@ -94,6 +97,41 @@ function ApplicationFormPage() {
     setFormData({ ...formData, workExperience: newWorkExperience });
   };
 
+  // Fungsi untuk menambah entri pengalaman kerja baru
+  const handleAddWorkExperience = () => {
+    if (formData.workExperience.length < 5) { // Maksimal 5 pengalaman
+      setFormData(prevFormData => ({
+        ...prevFormData,
+        workExperience: [...prevFormData.workExperience, { ...initialWorkExperienceEntry }],
+      }));
+      // Otomatis memperluas entri yang baru ditambahkan
+      setExpandedExperienceIndex(formData.workExperience.length); 
+    } else {
+      setMessage('Maksimal 5 pengalaman kerja.');
+      setIsSuccess(false);
+    }
+  };
+
+  // Fungsi untuk menghapus entri pengalaman kerja
+  const handleRemoveWorkExperience = (index) => {
+    const newWorkExperience = formData.workExperience.filter((_, i) => i !== index);
+    setFormData({ ...formData, workExperience: newWorkExperience });
+    // Sesuaikan indeks yang diperluas jika yang dihapus adalah yang diperluas
+    // atau jika penghapusan memengaruhi indeks yang diperluas
+    if (expandedExperienceIndex === index) {
+        setExpandedExperienceIndex(null); // Lipat jika yang dihapus adalah yang diperluas
+    } else if (expandedExperienceIndex > index) {
+        setExpandedExperienceIndex(prev => prev - 1); // Geser indeks jika yang lebih awal dihapus
+    }
+    // Jika hanya satu entri tersisa, perluas secara otomatis
+    if (newWorkExperience.length === 1) {
+        setExpandedExperienceIndex(0);
+    } else if (newWorkExperience.length === 0) { // Jika tidak ada entri tersisa
+        setExpandedExperienceIndex(null);
+    }
+  };
+
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -108,7 +146,7 @@ function ApplicationFormPage() {
 
     try {
       if (formData.photoFile && formData.photoFile.size > 200 * 1024) {
-        throw new Error('Ukuran foto melebihi 500KB.');
+        throw new Error('Ukuran foto melebihi 200KB.');
       }
       if (formData.cvFile && formData.cvFile.size > 1 * 1024 * 1024) {
         throw new Error('Ukuran CV melebihi 1MB.');
@@ -178,7 +216,7 @@ function ApplicationFormPage() {
       setFormData({
         fullName: '', nickName: '', address: '', dob: '', age: '', phoneNumber: '', email: '',
         ktpNumber: '', lastEducation: '', appliedPosition: initialAppliedPosition,
-        workExperience: [{ position: '', companyName: '', startDate: '', endDate: '', isCurrent: false }], // Reset work experience
+        workExperience: [{ ...initialWorkExperienceEntry }], // Reset to one empty experience
         lastSalary: '', expectedSalary: '', domicileCity: '', readyToRelocate: false,
         photoFile: null, cvFile: null,
       });
@@ -188,6 +226,9 @@ function ApplicationFormPage() {
       if (photoInput) photoInput.value = '';
       const cvInput = document.getElementById('cvFile');
       if (cvInput) cvInput.value = '';
+
+      // Reset expanded index
+      setExpandedExperienceIndex(0); // Kembali memperluas entri pertama setelah reset form
 
       setTimeout(() => navigate('/'), 3000);
 
@@ -350,69 +391,112 @@ function ApplicationFormPage() {
           <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Pengalaman Kerja Terakhir</h3>
             {formData.workExperience.map((exp, index) => (
-              <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                <div>
-                  <label htmlFor={`position-${index}`} className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Posisi</label>
-                  <input
-                    type="text"
-                    id={`position-${index}`}
-                    name="position"
-                    value={exp.position}
-                    onChange={(e) => handleWorkExperienceChange(e, index)}
-                    required
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white transition-all duration-300 text-base"
-                  />
+              <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                {/* Header for collapsed view */}
+                <div
+                  className="flex justify-between items-center cursor-pointer"
+                  onClick={() => setExpandedExperienceIndex(expandedExperienceIndex === index ? null : index)}
+                >
+                  <h4 className="text-base font-medium text-gray-700 dark:text-gray-300">
+                    {exp.position && exp.companyName ? `${exp.position} di ${exp.companyName}` : `Pengalaman #${index + 1}`}
+                  </h4>
+                  {expandedExperienceIndex === index ? (
+                    <ChevronUpIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                  ) : (
+                    <ChevronDownIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                  )}
                 </div>
-                <div>
-                  <label htmlFor={`companyName-${index}`} className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Nama Perusahaan</label>
-                  <input
-                    type="text"
-                    id={`companyName-${index}`}
-                    name="companyName"
-                    value={exp.companyName}
-                    onChange={(e) => handleWorkExperienceChange(e, index)}
-                    required
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white transition-all duration-300 text-base"
-                  />
-                </div>
-                <div>
-                  <label htmlFor={`startDate-${index}`} className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Dari (Bulan-Tahun)</label>
-                  <input
-                    type="month"
-                    id={`startDate-${index}`}
-                    name="startDate"
-                    value={exp.startDate}
-                    onChange={(e) => handleWorkExperienceChange(e, index)}
-                    required
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white transition-all duration-300 text-base"
-                  />
-                </div>
-                <div>
-                  <label htmlFor={`endDate-${index}`} className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Sampai (Bulan-Tahun)</label>
-                  <input
-                    type="month"
-                    id={`endDate-${index}`}
-                    name="endDate"
-                    value={exp.endDate}
-                    onChange={(e) => handleWorkExperienceChange(e, index)}
-                    disabled={exp.isCurrent} // Disable if "Saat Ini" is checked
-                    required={!exp.isCurrent} // Required if not current
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white transition-all duration-300 text-base disabled:bg-gray-200 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                  />
-                  <div className="flex items-center mt-2">
-                    <input
-                      type="checkbox"
-                      id={`isCurrent-${index}`}
-                      name="isCurrent"
-                      checked={exp.isCurrent}
-                      onChange={(e) => handleWorkExperienceChange(e, index)}
-                      className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600"
-                    />
-                    <label htmlFor={`isCurrent-${index}`} className="ml-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Saat Ini</label>
+
+                {/* Collapsible content */}
+                {expandedExperienceIndex === index && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <label htmlFor={`position-${index}`} className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Posisi</label>
+                      <input
+                        type="text"
+                        id={`position-${index}`}
+                        name="position"
+                        value={exp.position}
+                        onChange={(e) => handleWorkExperienceChange(e, index)}
+                        required
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white transition-all duration-300 text-base"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`companyName-${index}`} className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Nama Perusahaan</label>
+                      <input
+                        type="text"
+                        id={`companyName-${index}`}
+                        name="companyName"
+                        value={exp.companyName}
+                        onChange={(e) => handleWorkExperienceChange(e, index)}
+                        required
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white transition-all duration-300 text-base"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`startDate-${index}`} className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Dari (Bulan-Tahun)</label>
+                      <input
+                        type="month"
+                        id={`startDate-${index}`}
+                        name="startDate"
+                        value={exp.startDate}
+                        onChange={(e) => handleWorkExperienceChange(e, index)}
+                        required
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white transition-all duration-300 text-base"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`endDate-${index}`} className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Sampai (Bulan-Tahun)</label>
+                      <input
+                        type="month"
+                        id={`endDate-${index}`}
+                        name="endDate"
+                        value={exp.endDate}
+                        onChange={(e) => handleWorkExperienceChange(e, index)}
+                        disabled={exp.isCurrent} // Disable if "Saat Ini" is checked
+                        required={!exp.isCurrent} // Required if not current
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50 dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white transition-all duration-300 text-base disabled:bg-gray-200 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                      />
+                      <div className="flex items-center mt-2">
+                        <input
+                          type="checkbox"
+                          id={`isCurrent-${index}`}
+                          name="isCurrent"
+                          checked={exp.isCurrent}
+                          onChange={(e) => handleWorkExperienceChange(e, index)}
+                          className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600"
+                        />
+                        <label htmlFor={`isCurrent-${index}`} className="ml-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Saat Ini</label>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* Remove button for experience entry (only if more than one) */}
+                {formData.workExperience.length > 1 && (
+                  <div className="flex justify-end mt-4">
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveWorkExperience(index)}
+                      className="text-red-500 hover:text-red-700 transition-colors duration-200 flex items-center text-sm font-medium"
+                    >
+                      <MinusCircleIcon className="h-5 w-5 mr-1" /> Hapus Pengalaman
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
+            {/* Add button for new experience entry */}
+            {formData.workExperience.length < 5 && (
+              <button
+                type="button"
+                onClick={handleAddWorkExperience}
+                className="flex items-center justify-center px-4 py-2 border border-dashed border-blue-400 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors duration-200 w-full text-base font-medium"
+              >
+                <PlusCircleIcon className="h-5 w-5 mr-2" /> Tambah Pengalaman Kerja
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -476,8 +560,8 @@ function ApplicationFormPage() {
                 required
                 className="w-full text-sm text-gray-600 dark:text-gray-400 file:mr-4 file:py-2.5 file:px-5 file:rounded-lg file:border-0 file:text-base file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition-all duration-300 cursor-pointer"
               />
-              {formData.photoFile && formData.photoFile.size > 500 * 1024 && (
-                <p className="text-red-500 text-xs mt-1">Ukuran foto melebihi 500KB.</p>
+              {formData.photoFile && formData.photoFile.size > 200 * 1024 && (
+                <p className="text-red-500 text-xs mt-1">Ukuran foto melebihi 200KB.</p>
               )}
             </div>
             <div>

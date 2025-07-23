@@ -99,7 +99,6 @@ function LandingPage() {
                     transition-all duration-700 ease-out
                     ${heroEntry?.isIntersecting ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10'}`}
       >
-        <div className="absolute inset-0 opacity-90 dark:opacity-10" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/cubes.png")' }}></div>
         <div className="relative z-10 p-4 max-w-3xl mx-auto w-full text-center">
           <h1 className={`text-4xl sm:text-5xl md:text-6xl font-extrabold mb-5 leading-tight
                           ${theme === 'dark' ? 'text-blue-accent' : 'text-blue-primary'} drop-shadow-lg`}> {/* Changed text-white to text-blue-darker */}

@@ -13,7 +13,7 @@ export default {
       colors: {
         'blue-primary': '#007BFF',
         'blue-accent': '#4A90E2',
-        'blue-darker': '#2F39C6',
+        'blue-darker': '#0468cd',
 
         'light-bg-primary': '#FFFFFF',
         'light-bg-secondary': '#F8F9FA',
