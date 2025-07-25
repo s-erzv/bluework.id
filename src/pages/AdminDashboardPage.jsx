@@ -18,15 +18,13 @@ function AdminDashboardPage({ currentUser, onLogout }) {
   const [downloading, setDownloading] = useState(false); // New state for download loading
   const navigate = useNavigate();
 
-  // Helper function to format work experience for display and export
-  const formatWorkExperiences = (experiences) => {
+  // Helper function to format work experience for display and PDF export (multiline in one cell)
+  const formatWorkExperiencesForDisplay = (experiences) => {
     if (!experiences || experiences.length === 0) return '-';
     // Sort experiences by start_date descending (most recent first)
     const sortedExperiences = [...experiences].sort((a, b) => {
-      // Prioritize current jobs
       if (a.is_current_job && !b.is_current_job) return -1;
       if (!a.is_current_job && b.is_current_job) return 1;
-      // Then sort by start date
       return new Date(b.start_date) - new Date(a.start_date);
     });
 
@@ -36,6 +34,34 @@ function AdminDashboardPage({ currentUser, onLogout }) {
       return `${exp.position} di ${exp.company_name} (${startDate} - ${endDate})`;
     }).join('\n'); // Join with newline for display in table cell and PDF
   };
+
+  // Helper function to flatten work experiences into separate columns for XLSX
+  // Format: "Posisi - Perusahaan - Mulai - Akhir"
+  const flattenWorkExperiencesForXLSX = (experiences, maxExperiences = 5) => {
+    const flattened = {};
+    // Sort experiences by start_date descending (most recent first)
+    const sortedExperiences = [...experiences].sort((a, b) => {
+      if (a.is_current_job && !b.is_current_job) return -1;
+      if (!a.is_current_job && b.is_current_job) return 1;
+      return new Date(b.start_date) - new Date(a.start_date);
+    });
+
+    for (let i = 0; i < maxExperiences; i++) {
+      const exp = sortedExperiences[i];
+      const colName = `Pengalaman Kerja ${i + 1}`; // Correctly define colName here
+      if (exp) {
+        const startDate = exp.start_date ? new Date(exp.start_date).toLocaleDateString('id-ID', { year: 'numeric', month: 'short' }) : '';
+        const endDate = exp.is_current_job ? 'Saat Ini' : (exp.end_date ? new Date(exp.end_date).toLocaleDateString('id-ID', { year: 'numeric', month: 'short' }) : '');
+        
+        // Assign the formatted string directly to the column name
+        flattened[colName] = `${exp.position} - ${exp.company_name} - ${startDate} - ${endDate}`;
+      } else {
+        flattened[colName] = '-'; // Fill with '-' if no experience for this slot
+      }
+    }
+    return flattened;
+  };
+
 
   // Effect to check authentication and fetch data
   useEffect(() => {
@@ -187,7 +213,7 @@ function AdminDashboardPage({ currentUser, onLogout }) {
   }, [applicants, searchQuery, selectedJob]);
 
   // Function to handle PDF download
-  const handleDownloadPdf = async () => {
+   const handleDownloadPdf = async () => {
     if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
       setError('PDF export libraries not loaded. Please check index.html.');
       return;
@@ -197,14 +223,23 @@ function AdminDashboardPage({ currentUser, onLogout }) {
     if (!allApplicants) return;
 
     const doc = new window.jspdf.jsPDF('landscape'); // Use landscape for more columns
+    
+    // Updated tableColumn for PDF: fewer columns, more relevant data
+    // Prioritizing key information for PDF readability
     const tableColumn = [
-      "Nama Lengkap", "Posisi Dilamar", "Email", "No HP", "Kota Domisili", "Siap Relokasi",
-      "Pengalaman Kerja", // Single column for all experiences
-      "Diunggah Pada", "URL Foto", "URL CV"
+      "Nama Lengkap",
+      "Posisi Dilamar",
+      "Email",
+      "No HP",
+      "Kota Domisili",
+      "Siap Relokasi",
+      "Pengalaman Kerja", // Single column for all experiences (multiline)
+      "Diunggah Pada",
+      "Dokumen (Foto & CV)" // Combined Photo & CV URLs for brevity
     ];
     const tableRows = [];
 
-    allApplicants.forEach(applicant => {
+    allApplicants.forEach(applicant => { // Use allApplicants for export
       const applicantData = [
         applicant.full_name,
         applicant.applied_position,
@@ -212,12 +247,12 @@ function AdminDashboardPage({ currentUser, onLogout }) {
         applicant.phone_number,
         applicant.domicile_city,
         applicant.ready_to_relocate ? 'Ya' : 'Tidak',
-        formatWorkExperiences(applicant.applicant_work_experiences), // Use formatted experiences
+        formatWorkExperiencesForDisplay(applicant.applicant_work_experiences), // Use formatted experiences for PDF
         new Date(applicant.applied_at).toLocaleDateString('id-ID', {
           year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
         }),
-        applicant.photo_url || '-',
-        applicant.cv_url || '-',
+        // Combine Photo and CV URLs into one cell for PDF
+        `${applicant.photo_url ? 'Foto: ' + applicant.photo_url.substring(0, 30) + '...' : ''}\n${applicant.cv_url ? 'CV: ' + applicant.cv_url.substring(0, 30) + '...' : ''}`.trim() || '-',
       ];
       tableRows.push(applicantData);
     });
@@ -226,12 +261,36 @@ function AdminDashboardPage({ currentUser, onLogout }) {
       head: [tableColumn],
       body: tableRows,
       startY: 20,
-      styles: { fontSize: 7, cellPadding: 1, overflow: 'linebreak' }, // Reduced font size and padding
-      headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+      styles: { 
+        fontSize: 6, // Further reduced font size
+        cellPadding: 0.8, // Reduced cell padding
+        overflow: 'linebreak',
+        valign: 'top' // Align text to top in cells
+      },
+      headStyles: { 
+        fillColor: [41, 128, 185], 
+        textColor: 255,
+        fontStyle: 'bold',
+        halign: 'center' // Center header text
+      },
       margin: { top: 10, left: 5, right: 5, bottom: 10 }, // Adjusted margins
       columnStyles: {
-        // Adjust width for the 'Pengalaman Kerja' column (index 6)
-        6: { cellWidth: 60 }, // Example fixed width, adjust as needed
+        // Adjust column widths for better fit in landscape A4
+        0: { cellWidth: 28 },  // Nama Lengkap
+        1: { cellWidth: 28 },  // Posisi Dilamar
+        2: { cellWidth: 35 },  // Email
+        3: { cellWidth: 22 },  // No HP
+        4: { cellWidth: 22 },  // Kota Domisili
+        5: { cellWidth: 18 },  // Siap Relokasi
+        6: { cellWidth: 65 },  // Pengalaman Kerja (increased width significantly)
+        7: { cellWidth: 25 },  // Diunggah Pada
+        8: { cellWidth: 45 },  // Dokumen (increased width for URLs, also truncated)
+      },
+      didDrawCell: (data) => {
+        // Add borders to cells for better readability
+        if (data.cell.raw) { // Only draw if cell has content
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'S');
+        }
       }
     });
 
@@ -249,20 +308,35 @@ function AdminDashboardPage({ currentUser, onLogout }) {
     const allApplicants = await fetchAllApplicantsForDownload();
     if (!allApplicants) return;
 
-    const dataToExport = allApplicants.map(applicant => ({
-      'Nama Lengkap': applicant.full_name,
-      'Posisi Dilamar': applicant.applied_position,
-      'Email': applicant.email,
-      'No HP': applicant.phone_number,
-      'Kota Domisili': applicant.domicile_city,
-      'Siap Relokasi': applicant.ready_to_relocate ? 'Ya' : 'Tidak',
-      'Pengalaman Kerja': formatWorkExperiences(applicant.applicant_work_experiences), // Use formatted experiences
-      'Diunggah Pada': new Date(applicant.applied_at).toLocaleDateString('id-ID', {
-        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-      }),
-      'URL Foto': applicant.photo_url || '-',
-      'URL CV': applicant.cv_url || '-',
-    }));
+    // Siapkan data untuk XLSX, termasuk semua kolom utama dan pengalaman kerja yang diratakan
+    const dataToExport = allApplicants.map(applicant => {
+      const mainData = {
+        'Nama Lengkap': applicant.full_name,
+        'Nama Panggilan': applicant.nick_name || '-', // Ditambahkan
+        'Alamat': applicant.address || '-',           // Ditambahkan
+        'Tanggal Lahir': applicant.date_of_birth || '-', // Ditambahkan
+        'Usia': applicant.age || '-',                 // Ditambahkan
+        'Nomor HP': applicant.phone_number,
+        'Email': applicant.email,
+        'Nomor KTP': applicant.ktp_number || '-',     // Ditambahkan
+        'Pendidikan Terakhir': applicant.last_education || '-', // Ditambahkan
+        'Posisi Dilamar': applicant.applied_position,
+        'Gaji Terakhir': applicant.last_salary || '-', // Ditambahkan
+        'Gaji Diharapkan': applicant.expected_salary || '-', // Ditambahkan
+        'Kota Domisili': applicant.domicile_city,
+        'Siap Relokasi': applicant.ready_to_relocate ? 'Ya' : 'Tidak',
+        'Diunggah Pada': new Date(applicant.applied_at).toLocaleDateString('id-ID', {
+          year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        }),
+        'URL Foto': applicant.photo_url || '-',
+        'URL CV': applicant.cv_url || '-',
+      };
+
+      const applicantExperiences = applicant.applicant_work_experiences || [];
+      const flattenedExperiences = flattenWorkExperiencesForXLSX(applicantExperiences, 5); // Maksimal 5 pengalaman
+      
+      return { ...mainData, ...flattenedExperiences };
+    });
 
     const ws = window.XLSX.utils.json_to_sheet(dataToExport);
     const wb = window.XLSX.utils.book_new();

@@ -202,10 +202,8 @@ function ApplicationFormPage() {
           photo_url: photoUrl,
           cv_url: cvUrl,
           applied_at: new Date().toISOString(),
-          // Kolom-kolom pengalaman kerja yang terstruktur (last_job_position, dll.)
-          // dan last_work_experience TIDAK LAGI DISERTAKAN di sini
-          // karena mereka tidak ada di skema 'applications' terbaru Anda
-          // atau datanya disimpan di tabel terpisah.
+          // Kolom work_experiences_summary TIDAK LAGI DISERTAKAN di sini
+          // karena kita akan menyimpan setiap pengalaman di tabel terpisah
         },
       ]).select('id').single(); // Penting: select('id').single() untuk mendapatkan ID aplikasi yang baru dibuat
 
