@@ -36,7 +36,7 @@ function AdminDashboardPage({ currentUser, onLogout }) {
   };
 
   // Helper function to flatten work experiences into separate columns for XLSX
-  // Format: "Posisi - Perusahaan - Mulai - Akhir"
+  // Format: "Pengalaman Kerja X - Posisi", "Pengalaman Kerja X - Perusahaan", "Pengalaman Kerja X - Periode Mulai", "Pengalaman Kerja X - Periode Selesai", "Pengalaman Kerja X - Saat Ini"
   const flattenWorkExperiencesForXLSX = (experiences, maxExperiences = 5) => {
     const flattened = {};
     // Sort experiences by start_date descending (most recent first)
@@ -48,15 +48,23 @@ function AdminDashboardPage({ currentUser, onLogout }) {
 
     for (let i = 0; i < maxExperiences; i++) {
       const exp = sortedExperiences[i];
-      const colName = `Pengalaman Kerja ${i + 1}`; // Correctly define colName here
+      const prefix = `Pengalaman Kerja ${i + 1}`; // Prefix for column names
       if (exp) {
         const startDate = exp.start_date ? new Date(exp.start_date).toLocaleDateString('id-ID', { year: 'numeric', month: 'short' }) : '';
         const endDate = exp.is_current_job ? 'Saat Ini' : (exp.end_date ? new Date(exp.end_date).toLocaleDateString('id-ID', { year: 'numeric', month: 'short' }) : '');
         
-        // Assign the formatted string directly to the column name
-        flattened[colName] = `${exp.position} - ${exp.company_name} - ${startDate} - ${endDate}`;
+        flattened[`${prefix} - Posisi`] = exp.position;
+        flattened[`${prefix} - Perusahaan`] = exp.company_name;
+        flattened[`${prefix} - Periode Mulai`] = startDate;
+        flattened[`${prefix} - Periode Selesai`] = endDate;
+        flattened[`${prefix} - Saat Ini`] = exp.is_current_job ? 'Ya' : 'Tidak';
       } else {
-        flattened[colName] = '-'; // Fill with '-' if no experience for this slot
+        // Fill with '-' if no experience for this slot
+        flattened[`${prefix} - Posisi`] = '-';
+        flattened[`${prefix} - Perusahaan`] = '-';
+        flattened[`${prefix} - Periode Mulai`] = '-';
+        flattened[`${prefix} - Periode Selesai`] = '-';
+        flattened[`${prefix} - Saat Ini`] = '-';
       }
     }
     return flattened;
@@ -239,7 +247,7 @@ function AdminDashboardPage({ currentUser, onLogout }) {
     ];
     const tableRows = [];
 
-    allApplicants.forEach(applicant => { // Use allApplicants for export
+    allApplicants.forEach(applicant => { // Gunakan allApplicants untuk ekspor
       const applicantData = [
         applicant.full_name,
         applicant.applied_position,
@@ -247,7 +255,7 @@ function AdminDashboardPage({ currentUser, onLogout }) {
         applicant.phone_number,
         applicant.domicile_city,
         applicant.ready_to_relocate ? 'Ya' : 'Tidak',
-        formatWorkExperiencesForDisplay(applicant.applicant_work_experiences), // Use formatted experiences for PDF
+        formatWorkExperiencesForDisplay(applicant.applicant_work_experiences), // Gunakan pengalaman yang diformat untuk PDF
         new Date(applicant.applied_at).toLocaleDateString('id-ID', {
           year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
         }),
@@ -308,21 +316,21 @@ function AdminDashboardPage({ currentUser, onLogout }) {
     const allApplicants = await fetchAllApplicantsForDownload();
     if (!allApplicants) return;
 
-    // Siapkan data untuk XLSX, termasuk semua kolom utama dan pengalaman kerja yang diratakan
+    // Prepare data for XLSX, including all main columns and flattened experiences
     const dataToExport = allApplicants.map(applicant => {
       const mainData = {
         'Nama Lengkap': applicant.full_name,
-        'Nama Panggilan': applicant.nick_name || '-', // Ditambahkan
-        'Alamat': applicant.address || '-',           // Ditambahkan
-        'Tanggal Lahir': applicant.date_of_birth || '-', // Ditambahkan
-        'Usia': applicant.age || '-',                 // Ditambahkan
+        'Nama Panggilan': applicant.nick_name || '-',
+        'Alamat': applicant.address || '-',
+        'Tanggal Lahir': applicant.date_of_birth || '-',
+        'Usia': applicant.age || '-',
         'Nomor HP': applicant.phone_number,
         'Email': applicant.email,
-        'Nomor KTP': applicant.ktp_number || '-',     // Ditambahkan
-        'Pendidikan Terakhir': applicant.last_education || '-', // Ditambahkan
+        'Nomor KTP': applicant.ktp_number || '-',
+        'Pendidikan Terakhir': applicant.last_education || '-',
         'Posisi Dilamar': applicant.applied_position,
-        'Gaji Terakhir': applicant.last_salary || '-', // Ditambahkan
-        'Gaji Diharapkan': applicant.expected_salary || '-', // Ditambahkan
+        'Gaji Terakhir': applicant.last_salary || '-',
+        'Gaji Diharapkan': applicant.expected_salary || '-',
         'Kota Domisili': applicant.domicile_city,
         'Siap Relokasi': applicant.ready_to_relocate ? 'Ya' : 'Tidak',
         'Diunggah Pada': new Date(applicant.applied_at).toLocaleDateString('id-ID', {
